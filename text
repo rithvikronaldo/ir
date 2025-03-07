@@ -1,0 +1,150 @@
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
+from numpy import dot
+from numpy.linalg import norm
+from sklearn.feature_extraction.text import CountVectorizer
+import numpy as np
+
+# Sample Documents
+documents = [
+    "Statistical approaches to processing natural language text have become dominant in recent years. This foundational text is the first comprehensive introduction to statistical natural language processing.",
+    "This book offers a highly accessible introduction to natural language processing, the field that supports a variety of language technologies, from predictive text and email filtering to automatic summarization and translation.",
+    "Class-tested and coherent, this groundbreaking new textbook teaches web-era information retrieval, including web search and the related areas of text classification and text clustering from basic concepts.",
+    "An information retrieval (IR) system is designed to analyze, process and store sources of information and retrieve those that match a particular user's requirements.",
+    "Processing multimedia content has emerged as a key area for the application of machine learning techniques.",
+    "Through a series of recent breakthroughs, deep learning has boosted the entire field of machine learning."
+]
+
+# Text Preprocessing - Simple tokenization using split
+filtered_token_set = []
+for doc in documents:
+    # Split into words and convert to lowercase
+    tokens = doc.lower().split()
+    # Only filter non-alphanumeric tokens
+    filtered_tokens = [token for token in tokens if token.isalnum()]
+    filtered_token_set.append(" ".join(filtered_tokens))
+
+# TF-IDF Vectorization
+tv = TfidfVectorizer()
+document_matrix = tv.fit_transform(filtered_token_set)
+td = pd.DataFrame(document_matrix.toarray(), columns=tv.get_feature_names_out())
+
+# Query Processing
+query = ["natural language processing"]
+query_vector = tv.transform(query).toarray()[0]
+
+# Cosine Similarity Calculation
+cos_sim = []
+for i in range(td.shape[0]):
+    doc_vector = td.iloc[i].values
+    similarity = dot(doc_vector, query_vector) / (norm(doc_vector) * norm(query_vector))
+    cos_sim.append(similarity)
+
+# Print Results
+print("Cosine Similarity Scores:")
+for idx, score in enumerate(cos_sim):
+    print(f"Document {idx+1}: {score:.4f}")
+
+# Phase 1: Select top k documents
+k = 2
+top_k_indices = sorted(range(len(cos_sim)), key=lambda i: cos_sim[i], reverse=True)[:k]
+
+relevant_documents = [i+1 for i in top_k_indices]
+non_relevant_documents = [i+1 for i in range(len(documents)) if i not in top_k_indices]
+print("\nRelevant docs in phase 1:", relevant_documents)
+print("Non-relevant docs in phase 1:", non_relevant_documents)
+
+# Phase 2: Binary Independence Model
+# Create binary matrix
+cv = CountVectorizer()
+cv_ans = cv.fit_transform(filtered_token_set)
+tdm = pd.DataFrame(cv_ans.toarray(), columns=cv.get_feature_names_out())
+tdm_bool = tdm.astype(bool).astype(int)
+
+print("\nBinary Document-Term Matrix:")
+print(tdm_bool)
+
+# Apply Binary Independence Model (BIM) Formula for Query Terms
+N = len(documents)  # Total number of documents
+S = len(relevant_documents)  # Number of relevant documents
+
+bim_scores = {}
+
+# Compute BIM score only for query terms
+query_tokens = query[0].split()
+print("\nQuery tokens:", query_tokens)
+
+for term in query_tokens:
+    if term in tdm.columns:
+        n = tdm_bool[term].sum()  # Number of documents containing the term
+        s = tdm_bool.iloc[top_k_indices][term].sum()  # Number of relevant documents containing the term
+        # Apply BIM formula
+        numerator = (S + 0.5) / (S - s + 0.5)
+        denominator = (n - s + 0.5) / (N - S - n + s + 0.5)
+        bim_score = np.log(numerator / denominator)
+        bim_scores[term] = bim_score
+
+# Print BIM Scores for Query Terms
+print("\nBinary Independence Model (BIM) Scores for Query Terms:")
+for term, score in bim_scores.items():
+    print(f"{term}: {score:.4f}")
+
+# Calculate final scores for each document
+score_list = []
+for j in range(tdm_bool.shape[0]):
+    vec = tdm_bool.iloc[j]
+    score = 0
+    for term in query_tokens:
+        if term in bim_scores:
+            score += vec[term] * bim_scores[term]
+    score_list.append(score)
+print("\nFinal BIM scores:", score_list)
+
+
+from sklearn.datasets import fetch_20newsgroups
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB, BernoulliNB
+from sklearn.metrics import accuracy_score
+
+# Load training data
+newsgroups_data = fetch_20newsgroups(subset="train")
+X, y = newsgroups_data.data, newsgroups_data.target
+
+def simple_preprocess(text):
+    # Convert to lowercase and split
+    words = text.lower().split()
+    # Keep only alphabetic tokens
+    filtered_words = [word for word in words if word.isalpha()]
+    return " ".join(filtered_words)
+
+# Preprocess training data
+X_preprocessed = [simple_preprocess(text) for text in X]
+
+# Create TF-IDF features
+vectorizer = TfidfVectorizer()
+X_transformed = vectorizer.fit_transform(X_preprocessed)
+
+# Train Multinomial Naive Bayes
+multinomial = MultinomialNB()
+multinomial.fit(X_transformed, y)
+
+# Train Bernoulli Naive Bayes
+bernoulli = BernoulliNB()
+bernoulli.fit(X_transformed, y)
+
+# Load and preprocess test data
+test_data = fetch_20newsgroups(subset="test")
+X_test, y_test = test_data.data, test_data.target
+X_test_preprocessed = [simple_preprocess(text) for text in X_test]
+X_test_transformed = vectorizer.transform(X_test_preprocessed)
+
+# Evaluate Multinomial NB
+y_pred_multinomial = multinomial.predict(X_test_transformed)
+accuracy_multinomial = accuracy_score(y_test, y_pred_multinomial)
+print("Multinomial NB Accuracy:", accuracy_multinomial * 100)
+
+# Evaluate Bernoulli NB
+y_pred_bernoulli = bernoulli.predict(X_test_transformed)
+accuracy_bernoulli = accuracy_score(y_test, y_pred_bernoulli)
+print("Bernoulli NB Accuracy:", accuracy_bernoulli * 100)
+
