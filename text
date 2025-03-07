@@ -148,3 +148,10 @@ y_pred_bernoulli = bernoulli.predict(X_test_transformed)
 accuracy_bernoulli = accuracy_score(y_test, y_pred_bernoulli)
 print("Bernoulli NB Accuracy:", accuracy_bernoulli * 100)
 
+---------------------------------------------------------------
+
+# Read documents from a text file
+with open("documents.txt", "r", encoding="utf-8") as file:
+    documents = [line.strip() for line in file.readlines() if line.strip()]
+
+
